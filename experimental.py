@@ -6,81 +6,119 @@ import multiprocessing as mp
 from main import SnakeGame
 
 # -------------------------------
-# Neural Network / GA Parameters
+# Neural Network Parameters
 # -------------------------------
-# For the state vector from get_state_1, INPUT_SIZE remains 11.
-INPUT_SIZE = 11
-# Define two hidden layers.
-HIDDEN_SIZE_1 = 16
-HIDDEN_SIZE_2 = 16
+# Modular subnetwork architecture
+STATE_SIZE = 15  # Using get_state_2()
+SUB_NET_SIZES = {
+    'danger': (3, 6),    # 3 inputs (danger distances) → 8 neurons
+    'food': (2, 6),      # 2 inputs (food dx/dy) → 8 neurons
+    'direction': (2, 6), # 2 inputs (sin/cos) → 8 neurons
+    'rays': (8, 6)       # 8 ray distances → 8 neurons
+}
+HIDDEN_SIZE = 24         # Combined hidden layer
 OUTPUT_SIZE = 3
 
-# Genome length calculation:
-# Segment 1: Weights from Input to Hidden1: HIDDEN_SIZE_1 * INPUT_SIZE
-# Segment 2: Biases for Hidden1: HIDDEN_SIZE_1
-# Segment 3: Weights from Hidden1 to Hidden2: HIDDEN_SIZE_2 * HIDDEN_SIZE_1
-# Segment 4: Biases for Hidden2: HIDDEN_SIZE_2
-# Segment 5: Weights from Hidden2 to Output: OUTPUT_SIZE * HIDDEN_SIZE_2
-# Segment 6: Biases for Output: OUTPUT_SIZE
-GENOME_LENGTH = (HIDDEN_SIZE_1 * INPUT_SIZE + HIDDEN_SIZE_1 +
-                 HIDDEN_SIZE_2 * HIDDEN_SIZE_1 + HIDDEN_SIZE_2 +
-                 OUTPUT_SIZE * HIDDEN_SIZE_2 + OUTPUT_SIZE)
+
+# Calculate genome length
+GENOME_LENGTH = (
+    # Danger subnetwork
+    SUB_NET_SIZES['danger'][0] * SUB_NET_SIZES['danger'][1] + SUB_NET_SIZES['danger'][1] +
+    # Food subnetwork
+    SUB_NET_SIZES['food'][0] * SUB_NET_SIZES['food'][1] + SUB_NET_SIZES['food'][1] +
+    # Direction subnetwork
+    SUB_NET_SIZES['direction'][0] * SUB_NET_SIZES['direction'][1] + SUB_NET_SIZES['direction'][1] +
+    # Ray subnetwork
+    SUB_NET_SIZES['rays'][0] * SUB_NET_SIZES['rays'][1] + SUB_NET_SIZES['rays'][1] +
+    # Combined layers
+    (sum([v[1] for v in SUB_NET_SIZES.values()])) * HIDDEN_SIZE + HIDDEN_SIZE +
+    HIDDEN_SIZE * OUTPUT_SIZE + OUTPUT_SIZE
+)
 
 # -------------------------------
-# Neural Network and Genome Setup
+# Neural Network Functions
 # -------------------------------
 def decode_genome(genome):
-    """
-    Given a 1D genome, decode it into the parameters for the neural network
-    with an extra hidden layer.
-    """
-    # Segment 1: Weights from Input to Hidden1.
-    w1_end = HIDDEN_SIZE_1 * INPUT_SIZE
-    # Segment 2: Biases for Hidden1.
-    b1_end = w1_end + HIDDEN_SIZE_1
-    # Segment 3: Weights from Hidden1 to Hidden2.
-    w2_end = b1_end + HIDDEN_SIZE_2 * HIDDEN_SIZE_1
-    # Segment 4: Biases for Hidden2.
-    b2_end = w2_end + HIDDEN_SIZE_2
-    # Segment 5: Weights from Hidden2 to Output.
-    w3_end = b2_end + OUTPUT_SIZE * HIDDEN_SIZE_2
-    # Segment 6: Biases for Output.
-    b3_end = w3_end + OUTPUT_SIZE
+    """Decode genome into modular subnetwork weights/biases"""
+    ptr = 0
+    params = {}
 
-    w1 = genome[0:w1_end].reshape((HIDDEN_SIZE_1, INPUT_SIZE))
-    b1 = genome[w1_end:b1_end].reshape((HIDDEN_SIZE_1,))
-    w2 = genome[b1_end:w2_end].reshape((HIDDEN_SIZE_2, HIDDEN_SIZE_1))
-    b2 = genome[w2_end:b2_end].reshape((HIDDEN_SIZE_2,))
-    w3 = genome[b2_end:w3_end].reshape((OUTPUT_SIZE, HIDDEN_SIZE_2))
-    b3 = genome[w3_end:b3_end].reshape((OUTPUT_SIZE,))
-    return w1, b1, w2, b2, w3, b3
+    # Danger subnetwork (3 → 8)
+    w1_danger_size = SUB_NET_SIZES['danger'][0] * SUB_NET_SIZES['danger'][1]
+    params['w1_danger'] = genome[ptr:ptr + w1_danger_size].reshape(SUB_NET_SIZES['danger'][::-1])
+    ptr += w1_danger_size
+    params['b1_danger'] = genome[ptr:ptr + SUB_NET_SIZES['danger'][1]]
+    ptr += SUB_NET_SIZES['danger'][1]
+
+    # Food subnetwork (2 → 8)
+    w1_food_size = SUB_NET_SIZES['food'][0] * SUB_NET_SIZES['food'][1]
+    params['w1_food'] = genome[ptr:ptr + w1_food_size].reshape(SUB_NET_SIZES['food'][::-1])
+    ptr += w1_food_size
+    params['b1_food'] = genome[ptr:ptr + SUB_NET_SIZES['food'][1]]
+    ptr += SUB_NET_SIZES['food'][1]
+
+    # Direction subnetwork (2 → 8)
+    w1_dir_size = SUB_NET_SIZES['direction'][0] * SUB_NET_SIZES['direction'][1]
+    params['w1_dir'] = genome[ptr:ptr + w1_dir_size].reshape(SUB_NET_SIZES['direction'][::-1])
+    ptr += w1_dir_size
+    params['b1_dir'] = genome[ptr:ptr + SUB_NET_SIZES['direction'][1]]
+    ptr += SUB_NET_SIZES['direction'][1]
+
+    # Ray subnetwork (8 → 8)
+    w1_ray_size = SUB_NET_SIZES['rays'][0] * SUB_NET_SIZES['rays'][1]
+    params['w1_ray'] = genome[ptr:ptr + w1_ray_size].reshape(SUB_NET_SIZES['rays'][::-1])
+    ptr += w1_ray_size
+    params['b1_ray'] = genome[ptr:ptr + SUB_NET_SIZES['rays'][1]]
+    ptr += SUB_NET_SIZES['rays'][1]
+
+    # Combined layer (32 → 32)
+    combined_size = sum([v[1] for v in SUB_NET_SIZES.values()])  # 8+8+8+8=32
+    w2_size = combined_size * HIDDEN_SIZE
+    params['w2'] = genome[ptr:ptr + w2_size].reshape((HIDDEN_SIZE, combined_size))
+    ptr += w2_size
+    params['b2'] = genome[ptr:ptr + HIDDEN_SIZE]
+    ptr += HIDDEN_SIZE
+
+    # Output layer (32 → 3)
+    w3_size = HIDDEN_SIZE * OUTPUT_SIZE
+    params['w3'] = genome[ptr:ptr + w3_size].reshape((OUTPUT_SIZE, HIDDEN_SIZE))
+    ptr += w3_size
+    params['b3'] = genome[ptr:ptr + OUTPUT_SIZE]
+
+    return params
+
 
 def nn_predict(state, genome):
-    """
-    Forward pass through the neural network with an extra hidden layer.
-    """
-    w1, b1, w2, b2, w3, b3 = decode_genome(genome)
-    layer1 = np.tanh(np.dot(w1, state) + b1)
-    layer2 = np.tanh(np.dot(w2, layer1) + b2)
-    output = np.dot(w3, layer2) + b3
+    """Forward pass with modular subnetworks"""
+    params = decode_genome(genome)
+
+    # Split state into components
+    danger = state[0:3]
+    food = state[3:5]
+    direction = state[5:7]
+    rays = state[7:15]
+
+    # Process subnetworks
+    danger_out = np.tanh(np.dot(params['w1_danger'], danger) + params['b1_danger'])
+    food_out = np.tanh(np.dot(params['w1_food'], food) + params['b1_food'])
+    dir_out = np.tanh(np.dot(params['w1_dir'], direction) + params['b1_dir'])
+    ray_out = np.tanh(np.dot(params['w1_ray'], rays) + params['b1_ray'])
+
+    # Combine and process
+    combined = np.concatenate([danger_out, food_out, dir_out, ray_out])
+    hidden = np.tanh(np.dot(params['w2'], combined) + params['b2'])
+    output = np.dot(params['w3'], hidden) + params['b3']
+
     return output
 
 def get_action(state, genome):
-    """
-    Returns a one-hot vector for the action selected by the network.
-    Action encoding:
-        0 -> straight, 1 -> right turn, 2 -> left turn
-    """
     prediction = nn_predict(state, genome)
-    action_index = np.argmax(prediction)
-    action = [0, 0, 0]
-    action[action_index] = 1
-    return np.array(action)
+    return np.eye(OUTPUT_SIZE)[np.argmax(prediction)]
 
 # -------------------------------
 # Genetic Algorithm Components
 # -------------------------------
-def evaluate_genome(genome, max_steps=200):
+def evaluate_genome(genome):
     """
     Evaluate a genome by running a game simulation.
     The fitness is a combination of the game score and the number of frames survived.
@@ -88,12 +126,29 @@ def evaluate_genome(genome, max_steps=200):
     game = SnakeGame()
     game.reset()
     steps = 0
+    max_steps = 300 + game.score * 50  # Dynamic step limit
+    prev_food_distance = None
+
     while not game.game_over() and steps < max_steps:
-        state = game.get_state_1()
+        state = game.get_state_2()
         action = get_action(state, genome)
         game.update(action)
         steps += 1
-    fitness = game.score * 100 + game.frame_iteration
+
+        # Calculate food distance penalty/reward
+        head_x, head_y = game.snake[0]
+        food_distance = abs(head_x - game.food[0]) + abs(head_y - game.food[1])
+        if prev_food_distance is not None:
+            if food_distance < prev_food_distance:
+                game.score += 0.1  # Reward moving toward food
+        prev_food_distance = food_distance
+
+    # Fitness = score + survival_time + food_efficiency
+    fitness = (
+        game.score * 100 +
+        steps * 0.1 +
+        (game.score / max(1, steps))  # Penalize slow scoring
+    )
     return fitness
 
 def create_random_genome():
@@ -102,62 +157,101 @@ def create_random_genome():
     """
     return np.random.uniform(-1, 1, GENOME_LENGTH)
 
-def tournament_selection(population, fitnesses, tournament_size=5):
+
+def tournament_selection(population, fitnesses, tournament_size=10, best_prob=0.8):
     """
-    Select one genome from the population using tournament selection.
+    Improved tournament selection that selects the best individual with a probability `best_prob`,
+    otherwise selects a random individual from the tournament.
     """
+    # Randomly select indices for the tournament.
     selected_indices = np.random.choice(len(population), tournament_size, replace=False)
-    best = None
-    best_fitness = -np.inf
-    for i in selected_indices:
-        if fitnesses[i] > best_fitness:
-            best = population[i]
-            best_fitness = fitnesses[i]
-    return best
+    # Pair each selected individual with its fitness.
+    tournament = [(population[i], fitnesses[i]) for i in selected_indices]
+    # Sort by fitness (assuming higher fitness is better).
+    tournament.sort(key=lambda x: x[1], reverse=True)
 
-def crossover_segments(parent1, parent2):
+    # With probability best_prob, select the best individual.
+    if np.random.rand() < best_prob:
+        return tournament[0][0]
+    else:
+        # Otherwise, randomly select one from the rest.
+        return random.choice([ind for ind, _ in tournament[1:]])
+
+
+def crossover_segments(parent1, parent2, uniform_rate=0.5):
     """
-    Perform a segmented single-point crossover between two parent genomes.
-    Each segment corresponds to a different set of neural network parameters:
-      - Segment 1: Weights from Input to Hidden1 (indices 0 to w1_end)
-      - Segment 2: Biases for Hidden1 (indices w1_end to b1_end)
-      - Segment 3: Weights from Hidden1 to Hidden2 (indices b1_end to w2_end)
-      - Segment 4: Biases for Hidden2 (indices w2_end to b2_end)
-      - Segment 5: Weights from Hidden2 to Output (indices b2_end to w3_end)
-      - Segment 6: Biases for Output (indices w3_end to b3_end)
+    Improved segmented crossover for the modular genome structure using uniform crossover.
+    Each gene within a segment is chosen independently with probability 'uniform_rate' from parent1,
+    otherwise from parent2.
+
+    The segment boundaries are computed based on the architecture:
+      - Danger subnetwork (w1_danger + b1_danger)
+      - Food subnetwork (w1_food + b1_food)
+      - Direction subnetwork (w1_dir + b1_dir)
+      - Ray subnetwork (w1_ray + b1_ray)
+      - Combined layer (w2 + b2)
+      - Output layer (w3 + b3)
     """
-    w1_end = HIDDEN_SIZE_1 * INPUT_SIZE
-    b1_end = w1_end + HIDDEN_SIZE_1
-    w2_end = b1_end + HIDDEN_SIZE_2 * HIDDEN_SIZE_1
-    b2_end = w2_end + HIDDEN_SIZE_2
-    w3_end = b2_end + OUTPUT_SIZE * HIDDEN_SIZE_2
-    b3_end = w3_end + OUTPUT_SIZE
+    # Precompute segment boundaries (same as before)
+    boundaries = [
+        # Danger subnetwork (w1_danger + b1_danger)
+        0,
+        SUB_NET_SIZES['danger'][0] * SUB_NET_SIZES['danger'][1] + SUB_NET_SIZES['danger'][1],
 
-    seg1_length = w1_end
-    cp1 = np.random.randint(0, seg1_length)
-    child_seg1 = np.concatenate((parent1[0:cp1], parent2[cp1:w1_end]))
+        # Food subnetwork (w1_food + b1_food)
+        SUB_NET_SIZES['danger'][0] * SUB_NET_SIZES['danger'][1] + SUB_NET_SIZES['danger'][1],
+        SUB_NET_SIZES['danger'][0] * SUB_NET_SIZES['danger'][1] + SUB_NET_SIZES['danger'][1] +
+        SUB_NET_SIZES['food'][0] * SUB_NET_SIZES['food'][1] + SUB_NET_SIZES['food'][1],
 
-    seg2_length = HIDDEN_SIZE_1
-    cp2 = np.random.randint(0, seg2_length)
-    child_seg2 = np.concatenate((parent1[w1_end:w1_end+cp2], parent2[w1_end+cp2:b1_end]))
+        # Direction subnetwork (w1_dir + b1_dir)
+        SUB_NET_SIZES['danger'][0] * SUB_NET_SIZES['danger'][1] + SUB_NET_SIZES['danger'][1] +
+        SUB_NET_SIZES['food'][0] * SUB_NET_SIZES['food'][1] + SUB_NET_SIZES['food'][1],
+        SUB_NET_SIZES['danger'][0] * SUB_NET_SIZES['danger'][1] + SUB_NET_SIZES['danger'][1] +
+        SUB_NET_SIZES['food'][0] * SUB_NET_SIZES['food'][1] + SUB_NET_SIZES['food'][1] +
+        SUB_NET_SIZES['direction'][0] * SUB_NET_SIZES['direction'][1] + SUB_NET_SIZES['direction'][1],
 
-    seg3_length = HIDDEN_SIZE_2 * HIDDEN_SIZE_1
-    cp3 = np.random.randint(0, seg3_length)
-    child_seg3 = np.concatenate((parent1[b1_end:b1_end+cp3], parent2[b1_end+cp3:w2_end]))
+        # Ray subnetwork (w1_ray + b1_ray)
+        SUB_NET_SIZES['danger'][0] * SUB_NET_SIZES['danger'][1] + SUB_NET_SIZES['danger'][1] +
+        SUB_NET_SIZES['food'][0] * SUB_NET_SIZES['food'][1] + SUB_NET_SIZES['food'][1] +
+        SUB_NET_SIZES['direction'][0] * SUB_NET_SIZES['direction'][1] + SUB_NET_SIZES['direction'][1],
+        SUB_NET_SIZES['danger'][0] * SUB_NET_SIZES['danger'][1] + SUB_NET_SIZES['danger'][1] +
+        SUB_NET_SIZES['food'][0] * SUB_NET_SIZES['food'][1] + SUB_NET_SIZES['food'][1] +
+        SUB_NET_SIZES['direction'][0] * SUB_NET_SIZES['direction'][1] + SUB_NET_SIZES['direction'][1] +
+        SUB_NET_SIZES['rays'][0] * SUB_NET_SIZES['rays'][1] + SUB_NET_SIZES['rays'][1],
 
-    seg4_length = HIDDEN_SIZE_2
-    cp4 = np.random.randint(0, seg4_length)
-    child_seg4 = np.concatenate((parent1[w2_end:w2_end+cp4], parent2[w2_end+cp4:b2_end]))
+        # Combined layer (w2 + b2)
+        SUB_NET_SIZES['danger'][0] * SUB_NET_SIZES['danger'][1] + SUB_NET_SIZES['danger'][1] +
+        SUB_NET_SIZES['food'][0] * SUB_NET_SIZES['food'][1] + SUB_NET_SIZES['food'][1] +
+        SUB_NET_SIZES['direction'][0] * SUB_NET_SIZES['direction'][1] + SUB_NET_SIZES['direction'][1] +
+        SUB_NET_SIZES['rays'][0] * SUB_NET_SIZES['rays'][1] + SUB_NET_SIZES['rays'][1],
+        SUB_NET_SIZES['danger'][0] * SUB_NET_SIZES['danger'][1] + SUB_NET_SIZES['danger'][1] +
+        SUB_NET_SIZES['food'][0] * SUB_NET_SIZES['food'][1] + SUB_NET_SIZES['food'][1] +
+        SUB_NET_SIZES['direction'][0] * SUB_NET_SIZES['direction'][1] + SUB_NET_SIZES['direction'][1] +
+        SUB_NET_SIZES['rays'][0] * SUB_NET_SIZES['rays'][1] + SUB_NET_SIZES['rays'][1] +
+        (sum([v[1] for v in SUB_NET_SIZES.values()])) * HIDDEN_SIZE + HIDDEN_SIZE,
 
-    seg5_length = OUTPUT_SIZE * HIDDEN_SIZE_2
-    cp5 = np.random.randint(0, seg5_length)
-    child_seg5 = np.concatenate((parent1[b2_end:b2_end+cp5], parent2[b2_end+cp5:w3_end]))
+        # Output layer (w3 + b3)
+        SUB_NET_SIZES['danger'][0] * SUB_NET_SIZES['danger'][1] + SUB_NET_SIZES['danger'][1] +
+        SUB_NET_SIZES['food'][0] * SUB_NET_SIZES['food'][1] + SUB_NET_SIZES['food'][1] +
+        SUB_NET_SIZES['direction'][0] * SUB_NET_SIZES['direction'][1] + SUB_NET_SIZES['direction'][1] +
+        SUB_NET_SIZES['rays'][0] * SUB_NET_SIZES['rays'][1] + SUB_NET_SIZES['rays'][1] +
+        (sum([v[1] for v in SUB_NET_SIZES.values()])) * HIDDEN_SIZE + HIDDEN_SIZE,
+        GENOME_LENGTH
+    ]
 
-    seg6_length = OUTPUT_SIZE
-    cp6 = np.random.randint(0, seg6_length)
-    child_seg6 = np.concatenate((parent1[w3_end:w3_end+cp6], parent2[w3_end+cp6:b3_end]))
+    child = np.empty_like(parent1)
+    # Loop over segments defined by boundaries
+    for i in range(0, len(boundaries), 2):
+        start = boundaries[i]
+        end = boundaries[i + 1]
+        # For each gene in the segment, choose gene from parent1 with probability uniform_rate,
+        # else from parent2.
+        for j in range(start, end):
+            if np.random.rand() < uniform_rate:
+                child[j] = parent1[j]
+            else:
+                child[j] = parent2[j]
 
-    child = np.concatenate((child_seg1, child_seg2, child_seg3, child_seg4, child_seg5, child_seg6))
     return child
 
 
@@ -237,8 +331,9 @@ def plot_avg_fitness_history(avg_fitness_history):
 # Main Function
 # -------------------------------
 def main():
-    generations = 300
-    best_genome, best_fitness, fitness_history, avg_history = genetic_algorithm(generations=generations)
+    generations = 1000
+    population_size = 100
+    best_genome, best_fitness, fitness_history, avg_history = genetic_algorithm(population_size=population_size, generations=generations)
     print("Training complete.")
     print("Best Fitness:", best_fitness)
 
@@ -256,7 +351,7 @@ def main():
     game.reset()
     steps = 0
     while not game.game_over() and steps < 500:
-        state = game.get_state_1()
+        state = game.get_state_2()
         action = get_action(state, best_genome)
         game.update(action)
         steps += 1
