@@ -4,6 +4,27 @@ import math
 import matplotlib.pyplot as plt
 
 # -------------------------------
+# Neural Network / GA Parameters
+# -------------------------------
+# For the state vector from get_state_1, INPUT_SIZE remains 11.
+INPUT_SIZE = 11
+# Define two hidden layers.
+HIDDEN_SIZE_1 = 16
+HIDDEN_SIZE_2 = 16
+OUTPUT_SIZE = 3
+
+# Genome length calculation:
+# Segment 1: Weights from Input to Hidden1: HIDDEN_SIZE_1 * INPUT_SIZE
+# Segment 2: Biases for Hidden1: HIDDEN_SIZE_1
+# Segment 3: Weights from Hidden1 to Hidden2: HIDDEN_SIZE_2 * HIDDEN_SIZE_1
+# Segment 4: Biases for Hidden2: HIDDEN_SIZE_2
+# Segment 5: Weights from Hidden2 to Output: OUTPUT_SIZE * HIDDEN_SIZE_2
+# Segment 6: Biases for Output: OUTPUT_SIZE
+GENOME_LENGTH = (HIDDEN_SIZE_1 * INPUT_SIZE + HIDDEN_SIZE_1 +
+                 HIDDEN_SIZE_2 * HIDDEN_SIZE_1 + HIDDEN_SIZE_2 +
+                 OUTPUT_SIZE * HIDDEN_SIZE_2 + OUTPUT_SIZE)
+
+# -------------------------------
 # Snake Game Environment
 # -------------------------------
 class SnakeGame:
@@ -28,10 +49,8 @@ class SnakeGame:
         if point is None:
             point = self.snake[0]
         x, y = point
-        # Check wall collision
         if x < 0 or x >= self.width or y < 0 or y >= self.height:
             return True
-        # Check self collision
         if point in self.snake[1:]:
             return True
         return False
@@ -44,8 +63,7 @@ class SnakeGame:
             [0, 1, 0] -> turn right
             [0, 0, 1] -> turn left
         """
-        # Define directions in order: Up, Right, Down, Left
-        directions = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+        directions = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # Up, Right, Down, Left
         current_index = directions.index(self.direction)
         if np.array_equal(action, [1, 0, 0]):  # straight: no change
             new_index = current_index
@@ -62,7 +80,6 @@ class SnakeGame:
         new_head = (head_x + dx, head_y + dy)
         self.snake.insert(0, new_head)
 
-        # Check if food is eaten
         if new_head == self.food:
             self.score += 1
             self.place_food()
@@ -79,16 +96,14 @@ class SnakeGame:
         """
         x, y = self.snake[0]
         distance = 0.0
-        step = 0.1  # Use a small step for smooth measurement.
+        step = 0.1
         while distance < max_distance:
-            # Compute the new test coordinates along the ray.
             test_x = x + distance * math.cos(angle)
             test_y = y + distance * math.sin(angle)
-            # Map to grid coordinates (rounding to nearest integer)
             cell = (int(round(test_x)), int(round(test_y)))
             if (cell[0] < 0 or cell[0] >= self.width or
-                    cell[1] < 0 or cell[1] >= self.height or
-                    cell in self.snake):
+                cell[1] < 0 or cell[1] >= self.height or
+                cell in self.snake):
                 break
             distance += step
         return distance / max_distance
@@ -98,26 +113,15 @@ class SnakeGame:
         Casts rays in eight directions relative to the snake's current heading.
         Returns an array of normalized distances for each ray.
         """
-        # Compute the current direction's angle.
         dx, dy = self.direction
         head_angle = math.atan2(dy, dx)
-        # Define eight offsets (in radians) relative to the current direction.
-        offsets = [0, math.pi / 4, math.pi / 2, 3 * math.pi / 4,
-                   math.pi, -3 * math.pi / 4, -math.pi / 2, -math.pi / 4]
-        max_distance = math.sqrt(self.width ** 2 + self.height ** 2)
+        offsets = [0, math.pi/4, math.pi/2, 3*math.pi/4,
+                   math.pi, -3*math.pi/4, -math.pi/2, -math.pi/4]
+        max_distance = math.sqrt(self.width**2 + self.height**2)
         rays = [self.cast_ray(head_angle + offset, max_distance) for offset in offsets]
         return np.array(rays)
 
     def normalized_distance(self, direction):
-        """
-        Compute the normalized distance from the snake's head in a given direction
-        until a collision occurs. The value is steps_taken / max_possible_steps.
-        For cardinal directions the maximum steps (ignoring self-collision) are:
-            - Right: width - head_x - 1
-            - Left: head_x
-            - Down: height - head_y - 1
-            - Up: head_y
-        """
         head_x, head_y = self.snake[0]
         steps = 0
         current_point = (head_x, head_y)
@@ -128,65 +132,20 @@ class SnakeGame:
             steps += 1
             current_point = next_point
 
-        # Compute maximum possible steps in that direction (only considering walls)
-        if direction == (1, 0):  # right
+        if direction == (1, 0):
             max_steps = self.width - head_x - 1
-        elif direction == (-1, 0):  # left
+        elif direction == (-1, 0):
             max_steps = head_x
-        elif direction == (0, 1):  # down
+        elif direction == (0, 1):
             max_steps = self.height - head_y - 1
-        elif direction == (0, -1):  # up
+        elif direction == (0, -1):
             max_steps = head_y
         else:
-            max_steps = steps if steps != 0 else 1  # fallback
+            max_steps = steps if steps != 0 else 1
 
         if max_steps == 0:
             return 0.0
         return steps / max_steps
-
-    def get_state_2(self):
-        """
-        Returns a 15-element state vector encoding:
-        1. Danger signals: normalized distance to collision in 3 directions (straight, right, left).
-        2. Direction: the snake's current movement encoded as sin(angle) and cos(angle).
-        3. Food position: the relative position (dx, dy) of the food normalized by the board dimensions.
-        4. 4. And optionally, ray-casting sensor data (8 values).
-        """
-        # 1. Danger signals.
-        # Define directions relative to the current heading.
-        # "Straight" is the current direction.
-        # "Right" and "Left" are 90° rotations of the current direction.
-        dx, dy = self.direction
-        straight = self.direction
-        right = (dy, -dx)  # 90° clockwise rotation.
-        left = (-dy, dx)  # 90° counterclockwise rotation.
-
-        danger_straight = self.normalized_distance(straight)
-        danger_right = self.normalized_distance(right)
-        danger_left = self.normalized_distance(left)
-
-        # 2. Direction encoded as sin and cos.
-        angle = math.atan2(dy, dx)
-        dir_sin = math.sin(angle)
-        dir_cos = math.cos(angle)
-
-        # 3. Relative food position (continuous coordinates).
-        head_x, head_y = self.snake[0]
-        food_x, food_y = self.food
-        food_dx = (food_x - head_x) / self.width
-        food_dy = (food_y - head_y) / self.height
-
-        # 4. Ray-casting sensors.
-        rays = self.get_rays()  # This is an array of 8 values.
-
-        # Option 1: Use only rays as state.
-        # state = rays
-
-        # Option 2: Combine basic features with rays.
-        basic_features = [danger_straight, danger_right, danger_left, dir_sin, dir_cos, food_dx, food_dy]
-        state = np.concatenate((np.array(basic_features), rays))
-        # In this case, the state vector length becomes 7 + 8 = 15.
-        return state
 
     def get_state_1(self):
         """
@@ -219,19 +178,9 @@ class SnakeGame:
         food_left = 1 if food_x < head_x else 0
         food_right = 1 if food_x > head_x else 0
 
-        state = [
-            danger_straight,
-            danger_right,
-            danger_left,
-            dir_up,
-            dir_right,
-            dir_down,
-            dir_left,
-            food_up,
-            food_down,
-            food_left,
-            food_right
-        ]
+        state = [danger_straight, danger_right, danger_left,
+                 dir_up, dir_right, dir_down, dir_left,
+                 food_up, food_down, food_left, food_right]
         return np.array(state, dtype=int)
 
     def game_over(self):
@@ -240,36 +189,40 @@ class SnakeGame:
 # -------------------------------
 # Neural Network and Genome Setup
 # -------------------------------
-# Define network sizes and genome length.
-INPUT_SIZE = 11
-HIDDEN_SIZE = 16
-OUTPUT_SIZE = 3
-
-# Genome: weights and biases flattened.
-GENOME_LENGTH = HIDDEN_SIZE * INPUT_SIZE + HIDDEN_SIZE + OUTPUT_SIZE * HIDDEN_SIZE + OUTPUT_SIZE
-
 def decode_genome(genome):
     """
-    Given a 1D genome, decode into network parameters.
+    Given a 1D genome, decode it into the parameters for the neural network
+    with an extra hidden layer.
     """
-    w1_end = HIDDEN_SIZE * INPUT_SIZE
-    b1_end = w1_end + HIDDEN_SIZE
-    w2_end = b1_end + OUTPUT_SIZE * HIDDEN_SIZE
-    b2_end = w2_end + OUTPUT_SIZE
+    # Segment 1: Weights from Input to Hidden1.
+    w1_end = HIDDEN_SIZE_1 * INPUT_SIZE
+    # Segment 2: Biases for Hidden1.
+    b1_end = w1_end + HIDDEN_SIZE_1
+    # Segment 3: Weights from Hidden1 to Hidden2.
+    w2_end = b1_end + HIDDEN_SIZE_2 * HIDDEN_SIZE_1
+    # Segment 4: Biases for Hidden2.
+    b2_end = w2_end + HIDDEN_SIZE_2
+    # Segment 5: Weights from Hidden2 to Output.
+    w3_end = b2_end + OUTPUT_SIZE * HIDDEN_SIZE_2
+    # Segment 6: Biases for Output.
+    b3_end = w3_end + OUTPUT_SIZE
 
-    w1 = genome[0:w1_end].reshape((HIDDEN_SIZE, INPUT_SIZE))
-    b1 = genome[w1_end:b1_end].reshape((HIDDEN_SIZE,))
-    w2 = genome[b1_end:w2_end].reshape((OUTPUT_SIZE, HIDDEN_SIZE))
-    b2 = genome[w2_end:b2_end].reshape((OUTPUT_SIZE,))
-    return w1, b1, w2, b2
+    w1 = genome[0:w1_end].reshape((HIDDEN_SIZE_1, INPUT_SIZE))
+    b1 = genome[w1_end:b1_end].reshape((HIDDEN_SIZE_1,))
+    w2 = genome[b1_end:w2_end].reshape((HIDDEN_SIZE_2, HIDDEN_SIZE_1))
+    b2 = genome[w2_end:b2_end].reshape((HIDDEN_SIZE_2,))
+    w3 = genome[b2_end:w3_end].reshape((OUTPUT_SIZE, HIDDEN_SIZE_2))
+    b3 = genome[w3_end:b3_end].reshape((OUTPUT_SIZE,))
+    return w1, b1, w2, b2, w3, b3
 
 def nn_predict(state, genome):
     """
-    Forward pass through the neural network.
+    Forward pass through the neural network with an extra hidden layer.
     """
-    w1, b1, w2, b2 = decode_genome(genome)
+    w1, b1, w2, b2, w3, b3 = decode_genome(genome)
     layer1 = np.tanh(np.dot(w1, state) + b1)
-    output = np.dot(w2, layer1) + b2
+    layer2 = np.tanh(np.dot(w2, layer1) + b2)
+    output = np.dot(w3, layer2) + b3
     return output
 
 def get_action(state, genome):
@@ -300,7 +253,6 @@ def evaluate_genome(genome, max_steps=200):
         action = get_action(state, genome)
         game.update(action)
         steps += 1
-    # Fitness: reward food eaten heavily and also give credit for survival time.
     fitness = game.score * 100 + game.frame_iteration
     return fitness
 
@@ -323,52 +275,49 @@ def tournament_selection(population, fitnesses, tournament_size=5):
             best_fitness = fitnesses[i]
     return best
 
-def crossover(parent1, parent2):
-    """
-    Perform a single-point crossover between two parent genomes.
-    """
-    child = np.copy(parent1)
-    crossover_point = np.random.randint(0, GENOME_LENGTH)
-    child[crossover_point:] = parent2[crossover_point:]
-    return child
-
 def crossover_segments(parent1, parent2):
     """
     Perform a segmented single-point crossover between two parent genomes.
     Each segment corresponds to a different set of neural network parameters:
-      - Segment 1: Weights from Input to Hidden (indices 0 to w1_end)
-      - Segment 2: Biases for the Hidden layer (indices w1_end to b1_end)
-      - Segment 3: Weights from Hidden to Output (indices b1_end to w2_end)
-      - Segment 4: Biases for the Output layer (indices w2_end to b2_end)
+      - Segment 1: Weights from Input to Hidden1 (indices 0 to w1_end)
+      - Segment 2: Biases for Hidden1 (indices w1_end to b1_end)
+      - Segment 3: Weights from Hidden1 to Hidden2 (indices b1_end to w2_end)
+      - Segment 4: Biases for Hidden2 (indices w2_end to b2_end)
+      - Segment 5: Weights from Hidden2 to Output (indices b2_end to w3_end)
+      - Segment 6: Biases for Output (indices w3_end to b3_end)
     """
-    # Define segment boundaries based on the network architecture.
-    w1_end = HIDDEN_SIZE * INPUT_SIZE
-    b1_end = w1_end + HIDDEN_SIZE
-    w2_end = b1_end + OUTPUT_SIZE * HIDDEN_SIZE
-    b2_end = w2_end + OUTPUT_SIZE
+    w1_end = HIDDEN_SIZE_1 * INPUT_SIZE
+    b1_end = w1_end + HIDDEN_SIZE_1
+    w2_end = b1_end + HIDDEN_SIZE_2 * HIDDEN_SIZE_1
+    b2_end = w2_end + HIDDEN_SIZE_2
+    w3_end = b2_end + OUTPUT_SIZE * HIDDEN_SIZE_2
+    b3_end = w3_end + OUTPUT_SIZE
 
-    # Segment 1: Weights from Input to Hidden
     seg1_length = w1_end
     cp1 = np.random.randint(0, seg1_length)
     child_seg1 = np.concatenate((parent1[0:cp1], parent2[cp1:w1_end]))
 
-    # Segment 2: Biases for the Hidden layer
-    seg2_length = HIDDEN_SIZE
+    seg2_length = HIDDEN_SIZE_1
     cp2 = np.random.randint(0, seg2_length)
     child_seg2 = np.concatenate((parent1[w1_end:w1_end+cp2], parent2[w1_end+cp2:b1_end]))
 
-    # Segment 3: Weights from Hidden to Output
-    seg3_length = OUTPUT_SIZE * HIDDEN_SIZE
+    seg3_length = HIDDEN_SIZE_2 * HIDDEN_SIZE_1
     cp3 = np.random.randint(0, seg3_length)
     child_seg3 = np.concatenate((parent1[b1_end:b1_end+cp3], parent2[b1_end+cp3:w2_end]))
 
-    # Segment 4: Biases for the Output layer
-    seg4_length = OUTPUT_SIZE  # 3
+    seg4_length = HIDDEN_SIZE_2
     cp4 = np.random.randint(0, seg4_length)
     child_seg4 = np.concatenate((parent1[w2_end:w2_end+cp4], parent2[w2_end+cp4:b2_end]))
 
-    # Concatenate all segments to form the full child genome.
-    child = np.concatenate((child_seg1, child_seg2, child_seg3, child_seg4))
+    seg5_length = OUTPUT_SIZE * HIDDEN_SIZE_2
+    cp5 = np.random.randint(0, seg5_length)
+    child_seg5 = np.concatenate((parent1[b2_end:b2_end+cp5], parent2[b2_end+cp5:w3_end]))
+
+    seg6_length = OUTPUT_SIZE
+    cp6 = np.random.randint(0, seg6_length)
+    child_seg6 = np.concatenate((parent1[w3_end:w3_end+cp6], parent2[w3_end+cp6:b3_end]))
+
+    child = np.concatenate((child_seg1, child_seg2, child_seg3, child_seg4, child_seg5, child_seg6))
     return child
 
 def mutate(genome, mutation_rate=0.01, mutation_strength=0.1):
@@ -383,9 +332,8 @@ def mutate(genome, mutation_rate=0.01, mutation_strength=0.1):
 def genetic_algorithm(population_size=150, generations=100):
     """
     Main loop of the genetic algorithm.
-    Returns the best genome, its fitness, and a history of the best fitness per generation.
+    Returns the best genome, its fitness, and histories of best and average fitness per generation.
     """
-    # Create initial population.
     population = [create_random_genome() for _ in range(population_size)]
     best_genome = None
     best_fitness = -np.inf
@@ -404,10 +352,8 @@ def genetic_algorithm(population_size=150, generations=100):
         print(f"Generation {gen} Best Fitness: {gen_best}, Average Fitness: {avg_fitness}")
 
         new_population = []
-        # Elitism: preserve the best genome.
         elite = best_genome.copy()
         new_population.append(elite)
-        # Create new individuals until the population is refilled.
         while len(new_population) < population_size:
             parent1 = tournament_selection(population, fitnesses)
             parent2 = tournament_selection(population, fitnesses)
@@ -433,15 +379,13 @@ def plot_avg_fitness_history(avg_fitness_history):
 # Main Function
 # -------------------------------
 def main():
-    generations = 100  # number of generations for the GA
+    generations = 100
     best_genome, best_fitness, fitness_history, avg_history = genetic_algorithm(generations=generations)
     print("Training complete.")
     print("Best Fitness:", best_fitness)
 
-    # Plot the average fitness over generations
     plot_avg_fitness_history(avg_history)
 
-    # Plot the best fitness over generations
     plt.figure(figsize=(10, 6))
     plt.plot(range(generations), fitness_history, marker='o', linestyle='-', color='b')
     plt.title("Best Fitness Over Generations")
@@ -450,7 +394,6 @@ def main():
     plt.grid(True)
     plt.show()
 
-    # Run a final simulation using the best genome.
     game = SnakeGame()
     game.reset()
     steps = 0
@@ -459,7 +402,6 @@ def main():
         action = get_action(state, best_genome)
         game.update(action)
         steps += 1
-        # For demonstration purposes, print the current score and snake head position.
         print("Score:", game.score, "Head:", game.snake[0])
     print("Final Score:", game.score)
 
