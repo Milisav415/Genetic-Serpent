@@ -47,7 +47,7 @@ Modular GS is a genetic algorithm–based project that evolves a modular neural 
 ## Getting Started
 
 **1. Clone the Repository:**
-git clone https://github.com/yourusername/modular-evosnake.git
+git clone [https://github.com/yourusername/modular-evosnake.git](https://github.com/Milisav415/Genetic-Serpent)
 cd modular-Genetic-Serpant
 
 **2. Run the Training:**
