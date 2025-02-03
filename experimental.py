@@ -147,7 +147,7 @@ def evaluate_genome(genome):
     fitness = (
         game.score * 100 +
         steps * 0.1 +
-        (game.score / max(1, steps))  # Penalize slow scoring
+        (game.score / max(1, steps)) * 5  # Penalize slow scoring
     )
     return fitness
 
