@@ -39,6 +39,14 @@
   Contains the neural network modular architecture, genome decoding, genetic algorithm functions (including improved crossover and tournament selection), and the training loop.  
   _This file is used for experimenting with new ideas to develop a robust agent._
 
+- **`new_approach.py`**  
+  This thing is a new way of making an agent that is new to me, it makes a Deep Q-Netwotk that trys to predict the state of the game.
+  _This is not the original idea of using a genetic algorithm but but based on this I will try convert it to something that the gen alg will be able to use._
+
+- **`play_agent_dqn.py`**  
+  Now this is the same as agent_in_action but for our new agent architecture.  
+
+
 ---
 
 ## Requirements
