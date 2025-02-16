@@ -33,7 +33,7 @@ class SnakeVisualizer:
         # Pygame setup
         pygame.init()
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption("AI Snake Game")
+        pygame.display.set_caption("dqn agent in action")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 36)
 
@@ -64,7 +64,7 @@ class SnakeVisualizer:
 
         pygame.display.flip()
 
-    def run(self, max_steps=1500, fps=10):
+    def run(self, max_steps=2000, fps=10):
         """Run the game visualization with AI control"""
         self.game.reset()
         running = True
@@ -93,9 +93,7 @@ class SnakeVisualizer:
             if self.game.game_over():
                 print(f"Game Over! Final Score: {self.game.score}")
                 running = False
-
             step += 1
-
         pygame.quit()
 
 
