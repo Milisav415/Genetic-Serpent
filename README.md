@@ -57,3 +57,7 @@
 - [Multiprocessing](https://docs.python.org/3/library/multiprocessing.html)
 - [Bokeh](https://docs.bokeh.org/) (and [bokeh_sampledata](https://pypi.org/project/bokeh_sampledata/) if using sample data)
 - [Holoviews](http://holoviews.org/) (optional, for visualization)
+ 
+## The serpent in action
+
+![Genetic serpant demo](output.gif)
